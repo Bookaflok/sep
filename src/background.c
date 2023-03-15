@@ -486,13 +486,15 @@ float backguess(backstruct *bkg, float *mean, float *sigma)
 
     }
 
-  ftemp = bkg->qzero+(2.5*med-1.5*mea)*bkg->qscale; // mode estimate
-  mea = bkg->qzero+mea*bkg->qscale;
-  *mean = (fabs(sig) <= 0.0 ||
-          fabs(bkg->sigma/(sig*bkg->qscale)-1) < 0.0 ||
-          fabs((mea-ftemp)/mea)>=.3)?
-              mea
-              :ftemp;
+  // Always use trimmed mean instead of median or mode estimate until this is resolved
+  *mean = bkg->qzero+mea*bkg->qscale;
+  //ftemp = 2.5*med-1.5*mea;
+  //*mean = fabs(sig)>0.0? (fabs(bkg->sigma/(sig*bkg->qscale)-1) < 0.0 ?
+  //  		  bkg->qzero+mea*bkg->qscale
+  //  		  :(fabs((ftemp-med)/sig)< 0.3 ?
+  //  		    bkg->qzero+ftemp*bkg->qscale
+  //  		    :bkg->qzero+med*bkg->qscale))
+  //  :bkg->qzero+mea*bkg->qscale;
 
   *sigma = sig*bkg->qscale;
 
