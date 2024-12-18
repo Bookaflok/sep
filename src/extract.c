@@ -40,6 +40,7 @@ _Thread_local int plistoff_value, plistoff_cdvalue, plistoff_thresh, plistoff_va
 _Thread_local int plistsize;
 _Thread_local unsigned int randseed;
 static _Atomic size_t extract_pixstack = 300000;
+static _Atomic size_t extract_object_limit = 5000;
 
 /* get and set pixstack */
 void sep_set_extract_pixstack(size_t val)
@@ -50,6 +51,17 @@ void sep_set_extract_pixstack(size_t val)
 size_t sep_get_extract_pixstack()
 {
   return extract_pixstack;
+}
+
+/* get and set object_limit */
+void sep_set_extract_object_limit(size_t val)
+{
+  extract_object_limit = val;
+}
+
+size_t sep_get_extract_object_limit()
+{
+  return extract_object_limit;
 }
 
 int sortit(infostruct *info, objliststruct *objlist, int minarea,
@@ -180,7 +192,7 @@ int sep_extract(const sep_image *image, float thresh, int thresh_type,
   infostruct        curpixinfo, initinfo, freeinfo;
   objliststruct     objlist;
   char              newmarker;
-  size_t            mem_pixstack;
+  size_t            mem_pixstack, object_limit;
   int               nposize, oldnposize;
   int               w, h;
   int               co, i, luflag, pstop, xl, xl2, yl, cn;
@@ -230,6 +242,7 @@ int sep_extract(const sep_image *image, float thresh, int thresh_type,
   memset(&deblendctx, 0, sizeof(deblendctx));
 
   mem_pixstack = sep_get_extract_pixstack();
+  object_limit = sep_get_extract_object_limit();
 
   /* seed the random number generator consistently on each call to get
    * consistent results. rand_r() is used in deblending. */
@@ -449,36 +462,41 @@ int sep_extract(const sep_image *image, float thresh, int thresh_type,
 	  newmarker = marker[xl];  /* marker at this pixel */
 	  marker[xl] = 0;
 
-	  curpixinfo.flag = trunflag;
+      if (finalobjlist->nobj < object_limit) {
 
-          /* set pixel variance/noise based on noise array */
-          if (isvarthresh) {
-            if (xl == w || yl == h) {
-              pixsig = pixvar = 0.0;
-            }
-            else if (image->noise_type == SEP_NOISE_VAR) {
-              pixvar = wscan[xl];
-              pixsig = sqrt(pixvar);
-            }
-            else if (image->noise_type == SEP_NOISE_STDDEV) {
-              pixsig = wscan[xl];
-              pixvar = pixsig * pixsig;
-            }
-            else {
-              status = UNKNOWN_NOISE_TYPE;
-              goto exit;
-            }
+        curpixinfo.flag = trunflag;
 
-            /* set `thresh` (This is needed later, even
-             * if filter_type is SEP_FILTER_MATCHED */
-            thresh = relthresh * pixsig;
+        /* set pixel variance/noise based on noise array */
+        if (isvarthresh) {
+          if (xl == w || yl == h) {
+            pixsig = pixvar = 0.0;
+          }
+          else if (image->noise_type == SEP_NOISE_VAR) {
+            pixvar = wscan[xl];
+            pixsig = sqrt(pixvar);
+          }
+          else if (image->noise_type == SEP_NOISE_STDDEV) {
+            pixsig = wscan[xl];
+            pixvar = pixsig * pixsig;
+          }
+          else {
+            status = UNKNOWN_NOISE_TYPE;
+            goto exit;
           }
 
-          /* luflag: is pixel above thresh (Y/N)? */
-          if (filter_type == SEP_FILTER_MATCHED)
-            luflag = ((xl != w) && (sigscan[xl] > relthresh))? 1: 0;
-          else
-            luflag = cdnewsymbol > thresh? 1: 0;
+          /* set `thresh` (This is needed later, even
+           * if filter_type is SEP_FILTER_MATCHED */
+          thresh = relthresh * pixsig;
+        }
+
+        /* luflag: is pixel above thresh (Y/N)? */
+        if (filter_type == SEP_FILTER_MATCHED)
+          luflag = ((xl != w) && (sigscan[xl] > relthresh))? 1: 0;
+        else
+          luflag = cdnewsymbol > thresh? 1: 0;
+      } else {
+        luflag = 0;
+      }
 
 	  if (luflag)
 	    {
